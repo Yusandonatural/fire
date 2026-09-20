@@ -192,6 +192,7 @@ button.small{font-size:12px;padding:5px 12px}
 button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .note{font-size:11.5px;color:var(--ink-3);line-height:1.7}
 
+.sellmark{color:var(--accent);font-weight:700;margin-left:2px;font-size:.9em}
 /* ---- 計算するバー ---- */
 .calcbar{position:sticky;bottom:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px;
   padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px));margin-top:2px;
@@ -624,7 +625,7 @@ button.del:hover{color:var(--warn);background:none}
     <div class="f"><label for="targetExp">支出はこの範囲内</label><div class="in"><input id="targetExp" type="number" min="0" step="1"><span class="u">万円/月</span></div></div>
     <div class="f"><label for="targetInv">投資に回す額<small>新NISAを優先</small></label><div class="in"><input id="targetInv" type="number" min="0" step="1"><span class="u">万円/月</span></div></div>
     <div class="f"><label for="lifespan">想定寿命</label><div class="in"><input id="lifespan" type="number" min="60" max="110" step="1"><span class="u">歳</span></div></div>
-    <p class="note">利回りは過去の平均であって保証ではありません。新NISAは年360万円・生涯1,800万円（1人）の枠を先に使い、超えた分は課税口座（運用益・配当に20.315%）として計算します。既存の課税口座の含み益はゼロとして扱います。</p>
+    <p class="note">利回りは過去の平均であって保証ではありません。新NISAは年360万円・生涯1,800万円（1人）の枠を先に使い、超えた分は課税口座（運用益・配当に20.315%）として計算します。既存の課税口座の含み益はゼロとして扱います。年金・児童手当は「受け取る総額の現在価値」を必要な資産から差し引く方式で、（生活費−年金）÷取崩率で求めるより必要額が大きめ（保守的）に出ます。</p>
     <div><button class="small" id="resetBtn" type="button">サンプル値に戻す</button></div>
   </div>
 </details>
@@ -1044,20 +1045,20 @@ function simulate(s){
     let gain=0; H.forEach(h=>{const g=h.v*h.g; h.v+=g; gain+=g;}); { const g=N*mr; N+=g; gain+=g; } { const g=T*mr; T+=g; gain+=g; } { const g=Math.max(0,C)*cr; C+=g*(1-tax); gain+=g; }
     if(t%12===0) nisaYear=0;   // 年が変わると年間枠がリセット
     // 取り崩し：開始年齢から「開始時の投資資産×取崩率」を毎年（インフレ調整して）現金化する
-    let wd=0, invest=0, nisaIn=0; const dd=age>=s.ddAge;
+    let wd=0, sell=0, invest=0, nisaIn=0; const dd=age>=s.ddAge;
     C+=net;
     if(dd){ if(W0==null){W0=Math.max(0,N+T+sumH())*wr/12; infDD=inf;} wd=takeFromInvest(W0*inf/infDD); C+=wd; }
     else { // 投資に回せるお金：黒字をすべて／毎月一定額（現金がある範囲で）。NISA枠を先に使い、残りは課税口座へ
       const want=s.investMode==='all'?Math.max(0,net):s.investAmt*MAN; invest=Math.min(want,Math.max(0,C));
       nisaIn=Math.min(invest,Math.max(0,NISA_YEAR*people-nisaYear),nisaLife); N+=nisaIn; nisaYear+=nisaIn; nisaLife-=nisaIn;
       T+=invest-nisaIn; Tb+=invest-nisaIn; C-=invest; }
-    if(C<0){ C+=takeFromInvest(-C); }   // 現金が足りなければ投資資産から補填
+    if(C<0){ sell=takeFromInvest(-C); C+=sell; }   // 現金が足りなければ投資資産を売って補填（計画外の売却として記録）
     const L=N+T+sumH()+C;
     const nisaV=N+H.reduce((a,h)=>a+(h.taxed?0:h.v),0);
     // 不労所得 = 取り崩し（開始前は「取崩率で引き出せる額」）＋ 配当 ＋ 家賃。これが生活費を上回れば「お金の心配のない状態」
     const wdPot=dd?wd:Math.max(0,N+T+sumH())*wr/12;
     const passive=wdPot+dividend+rental+pension+allowance;
-    rows.push({t,age,income,main,side,rental,spouse,pension,allowance,expense,base,edu,loanPay,gain,net,L,Lstart,loan,retired,kidsAges,inf,dividend,wd,C,A:N+T,Hv:sumH(),invest,nisaIn,nisaV,nisaLife,taxPaid,W0:W0||0,wdPot,passive,freeCov:expense>0?passive/expense:1});
+    rows.push({t,age,income,main,side,rental,spouse,pension,allowance,expense,base,edu,loanPay,gain,net,L,Lstart,loan,retired,kidsAges,inf,dividend,wd,sell,C,A:N+T,Hv:sumH(),invest,nisaIn,nisaV,nisaLife,taxPaid,W0:W0||0,wdPot,passive,freeCov:expense>0?passive/expense:1});
   }
   // ---- required lines ----
   // remaining lumps after time t: education + loan balance
@@ -1104,8 +1105,10 @@ function simulate(s){
 
 // ---------- formatting ----------
 const fmt=y=>{ const m=y/MAN; if(Math.abs(m)>=10000) return (m/10000).toFixed(2).replace(/\.?0+$/,'')+'億円'; if(Math.abs(m)<10&&m!==0) return m.toFixed(1)+'万円'; return Math.round(m).toLocaleString('ja-JP')+'万円'; };
-const fmtAge=a=>a==null?'—':(Math.floor(a)+'歳');
-const ageIn=a=>{ if(a==null) return '想定寿命までに未達'; const d=a-state.age; return d<=0?'達成済み':(d<1?'1年以内':`あと約${Math.round(d)}年`); };
+const ageY=a=>a==null?null:Math.floor(a);                       // 達成年齢は「その歳になる年」で統一（表示・差分・残り年数すべて同じ丸め）
+const yearsTo=a=>a==null?null:Math.max(0,ageY(a)-state.age);
+const fmtAge=a=>a==null?'—':(ageY(a)+'歳');
+const ageIn=a=>{ if(a==null) return '想定寿命までに未達'; const d=yearsTo(a); return d<=0?'達成済み':`あと約${d}年`; };
 
 // ---------- cards ----------
 const FIRE_TYPES=[
@@ -1260,7 +1263,7 @@ function renderDiag(sim){
   const years=r.expense>0?r.J/(r.expense*12):0;
   const nw=r.Lstart+(s.home+s.rentalValue)*MAN-s.loan*MAN;
   const P=r.passive, E=r.expense, seg=(v,c,l)=>{const w=E>0?Math.min(100,v/E*100):0; return w>0.5?`<i style="width:${w}%;background:${c}" title="${l} ${fmt(v)}"></i>`:'';};
-  const fa=sim.cross.free; const faTxt=fa==null?'今の計画では想定寿命までに届きません':(fa<=s.age?'到達済み':`${Math.floor(fa)}歳で到達（あと約${Math.max(1,Math.round(fa-s.age))}年）`);
+  const fa=sim.cross.free; const faTxt=fa==null?'今の計画では想定寿命までに届きません':(fa<=s.age?'到達済み':`${ageY(fa)}歳で到達（あと約${Math.max(1,yearsTo(fa))}年）`);
   $('diag').innerHTML=`<div>
       <div class="stage-label">いまの状態</div>
       <div class="stage">${stage}</div>
@@ -1305,7 +1308,7 @@ function renderRoad(sim){
   let nextIdx=items.findIndex(it=>!(it.age!=null&&it.age<=s.age)); if(nextIdx<0) nextIdx=items.length;
   $('road').innerHTML=items.map((it,i)=>{
     const done=it.age!=null&&it.age<=s.age, never=it.age==null;
-    const w=done?'達成済み':never?'今の計画では未達':`${Math.floor(it.age)}歳（あと約${Math.max(1,Math.round(it.age-s.age))}年）`;
+    const w=done?'達成済み':never?'今の計画では未達':`${ageY(it.age)}歳（あと約${Math.max(1,yearsTo(it.age))}年）`;
     const cls=done?'done':(i===nextIdx?'next':'')+(never?' never':'');
     return `<li class="${cls}"><span class="dot"></span><span class="n">${it.n}<small>${it.d}</small></span><span class="w">${w}</span>${i===nextIdx?'<span class="now">▲ 今ここ — 次の目標</span>':''}</li>`;
   }).join('');
@@ -1552,9 +1555,10 @@ function buildAdvice(sim){
       `収入${man(incM)}に対して手元に残るのが${man(M(r.net))}、貯蓄率${sr.toFixed(0)}%です。この率だと資産形成のスピードが利回りよりも「入金力」で決まる段階を抜けられません。`,
       `まず15%、次に20%を目標に。収入を増やすより、固定費を月3万円削るほうが確実で、それだけで年36万円が投資に回ります。`);
   else add('keep',`貯蓄率${sr.toFixed(0)}%は良い水準です`,`収入${man(incM)}のうち${man(M(r.net))}を将来に回せています。`,`この率を保ったまま、増えた収入の半分は生活水準に、半分は投資に回すと無理なく続きます。`);
+  const sellTotal=sim.rows.reduce((a,x)=>a+(x.age<s.ddAge?(x.sell||0):0),0);   // 取り崩し開始前の不足補填売却の合計
   if(M(r.net)>=0&&neg)
     add('check',`${Math.floor(neg.age)}歳ごろ、家計が赤字になります`,
-      `今の計画のままだと${Math.floor(neg.age)}歳ごろに月${man(-M(neg.net))}の赤字に入ります。${neg.age<s.retireAge?'教育費のピークと重なる時期です。':'退職で収入が止まる一方、年金が始まるまで間があるためです。'}`,
+      `今の計画のままだと${Math.floor(neg.age)}歳ごろに月${man(-M(neg.net))}の赤字に入ります。${sellTotal>0?`取り崩し開始までに、不足を埋めるため合計${man(M(sellTotal))}の投資資産を売ることになります。`:''}${neg.age<s.retireAge?'教育費のピークと重なる時期です。':'退職で収入が止まる一方、年金が始まるまで間があるためです。'}`,
       `${neg.age<s.retireAge?'その時期に取り崩す前提の現金を別に用意しておくと、株を売らずに乗り切れます。':'退職年齢と年金受給までの「空白期間」をどう埋めるか（副収入を残す・退職を遅らせる）を先に決めておきましょう。'}`);
 
   // 4. 教育費のピーク
@@ -1690,7 +1694,7 @@ const INC_CATS=[
   ['side','副収入','var(--g1)',r=>r.side],
   ['rental','不動産（家賃）','var(--g3)',r=>r.rental],
   ['div','配当金','var(--g2)',r=>r.dividend],
-  ['wd','取り崩し','var(--g4)',r=>r.wd],
+  ['wd','取り崩し（不足補填の売却を含む）','var(--g4)',r=>r.wd+r.sell],
   ['pub','公的な給付（児童手当・年金）','var(--g5)',r=>r.allowance+r.pension],
 ];
 let incMode='abs';
@@ -1742,8 +1746,8 @@ function renderSens(base){
   ];
   const rowsHtml=variants.map(([name,fn],i)=>{
     const s=fn(JSON.parse(JSON.stringify(state))); const sim=i?simulate(s):base;
-    const cell=(k)=>{ const a=sim.cross[k], b=base.cross[k]; let d=''; if(i){ if(a==null&&b==null) d=''; else if(a==null) d='未達に'; else if(b==null) d='達成可能に'; else { const dd=Math.round(b-a); d=dd>0?`${dd}年早まる`:dd<0?`${-dd}年遅れる`:'変わらず'; } }
-      const worse=(i&&((a==null&&b!=null)||(a!=null&&b!=null&&a>b)));
+    const cell=(k)=>{ const a=sim.cross[k], b=base.cross[k]; let d=''; if(i){ if(a==null&&b==null) d=''; else if(a==null) d='未達に'; else if(b==null) d='達成可能に'; else { const dd=ageY(b)-ageY(a); d=dd>0?`${dd}年早まる`:dd<0?`${-dd}年遅れる`:'変わらず'; } }
+      const worse=(i&&((a==null&&b!=null)||(a!=null&&b!=null&&ageY(a)>ageY(b))));
       return `<td class="num">${fmtAge(a)}</td><td class="delta ${worse?'worse':''}">${d}</td>`; };
     const ok=sim.runOut==null&&sim.at65>=sim.R65;
     return `<tr class="${i?'':'base'}"><td>${name}</td>${cell('g1')}${cell('g2')}${cell('g3')}<td>${ok?'<span class="pill ok">安心</span>':'<span class="pill bad">要注意</span>'}</td></tr>`;
@@ -1758,13 +1762,13 @@ function renderTable(sim){
   const rows=sim.rows; let out=[];
   if(tblMode==='y'){
     for(let k=0;k+12<=rows.length||k===0;k+=12){ const chunk=rows.slice(k,k+12); if(!chunk.length) break; const sum=key=>chunk.reduce((a,r)=>a+r[key],0); const last=chunk[chunk.length-1];
-      out.push({label:`${Math.floor(rows[k].age)}歳`,income:sum('income'),allowance:sum('allowance'),expense:sum('expense'),edu:sum('edu'),loanPay:sum('loanPay'),gain:sum('gain'),net:sum('net'),wd:sum('wd'),invest:sum('invest'),nisaIn:sum('nisaIn'),taxPaid:sum('taxPaid'),nisaV:last.nisaV,L:last.L,retire:Math.floor(rows[k].age)===state.retireAge}); }
+      out.push({label:`${Math.floor(rows[k].age)}歳`,income:sum('income'),allowance:sum('allowance'),expense:sum('expense'),edu:sum('edu'),loanPay:sum('loanPay'),gain:sum('gain'),net:sum('net'),wd:sum('wd'),sell:sum('sell'),invest:sum('invest'),nisaIn:sum('nisaIn'),taxPaid:sum('taxPaid'),nisaV:last.nisaV,L:last.L,retire:Math.floor(rows[k].age)===state.retireAge}); }
   } else {
-    rows.forEach(r=>out.push({label:`${Math.floor(r.age)}歳${Math.round((r.age%1)*12)+1}か月目`,income:r.income,allowance:r.allowance,expense:r.expense,edu:r.edu,loanPay:r.loanPay,gain:r.gain,net:r.net,wd:r.wd,invest:r.invest,nisaIn:r.nisaIn,taxPaid:r.taxPaid,nisaV:r.nisaV,L:r.L,retire:false}));
+    rows.forEach(r=>out.push({label:`${Math.floor(r.age)}歳${Math.round((r.age%1)*12)+1}か月目`,income:r.income,allowance:r.allowance,expense:r.expense,edu:r.edu,loanPay:r.loanPay,gain:r.gain,net:r.net,wd:r.wd,sell:r.sell,invest:r.invest,nisaIn:r.nisaIn,taxPaid:r.taxPaid,nisaV:r.nisaV,L:r.L,retire:false}));
   }
   const f=v=>Math.round(v/MAN).toLocaleString('ja-JP');
-  $('cf').innerHTML=`<thead><tr><th>${tblMode==='y'?'年齢':'月'}</th><th>収入</th><th>うち児童手当</th><th>支出</th><th>うち教育費</th><th>うちローン</th><th>収支</th><th>投資額</th><th>うちNISA</th><th>運用益</th><th>税</th><th>取り崩し</th><th>NISA資産</th><th>期末資産</th></tr></thead><tbody>`+
-    out.map(r=>`<tr class="${r.retire?'retire':''}${r.L<0?' neg':''}"><td>${r.label}</td><td>${f(r.income)}</td><td>${f(r.allowance)}</td><td>${f(r.expense)}</td><td>${f(r.edu)}</td><td>${f(r.loanPay)}</td><td>${r.net<0?'−':''}${f(Math.abs(r.net))}</td><td>${r.invest?f(r.invest):'—'}</td><td>${r.nisaIn?f(r.nisaIn):'—'}</td><td>${f(r.gain)}</td><td>${r.taxPaid>=MAN/2?f(r.taxPaid):'—'}</td><td>${r.wd?f(r.wd):'—'}</td><td>${f(r.nisaV)}</td><td>${f(r.L)}</td></tr>`).join('')+`</tbody>`;
+  $('cf').innerHTML=`<thead><tr><th>${tblMode==='y'?'年齢':'月'}</th><th>収入</th><th>うち児童手当</th><th>支出</th><th>うち教育費</th><th>うちローン</th><th>収支</th><th>投資額</th><th>うちNISA</th><th>運用益</th><th>税</th><th>取り崩し<small>※は不足補填の売却</small></th><th>NISA資産</th><th>期末資産</th></tr></thead><tbody>`+
+    out.map(r=>`<tr class="${r.retire?'retire':''}${r.L<0?' neg':''}"><td>${r.label}</td><td>${f(r.income)}</td><td>${f(r.allowance)}</td><td>${f(r.expense)}</td><td>${f(r.edu)}</td><td>${f(r.loanPay)}</td><td>${r.net<0?'−':''}${f(Math.abs(r.net))}</td><td>${r.invest?f(r.invest):'—'}</td><td>${r.nisaIn?f(r.nisaIn):'—'}</td><td>${f(r.gain)}</td><td>${r.taxPaid>=MAN/2?f(r.taxPaid):'—'}</td><td>${r.wd||r.sell?f(r.wd+r.sell)+(r.sell>=MAN/2?'<span class="sellmark" title="取り崩し開始前に、現金不足を埋めるため売却した分">※</span>':''):'—'}</td><td>${f(r.nisaV)}</td><td>${f(r.L)}</td></tr>`).join('')+`</tbody>`;
 }
 
 // ---------- 投資先の実績 ----------
@@ -2131,7 +2135,7 @@ function buildReport(sim){
     <h2>FIREの種類別 達成度</h2>
     <table><thead><tr><th>種類</th><th>必要な資産</th><th>達成率</th><th>到達年齢</th></tr></thead><tbody>
     ${items.map(x=>{const p=x.req>0?r.J/x.req*100:100;const done=x.age!=null&&x.age<=s.age;
-      return `<tr><td>${x.name}</td><td class="num">${M(x.req)}</td><td class="num ${done?'ok':''}">${done?'達成':pc(p)}</td><td class="${x.age==null?'ng':''}">${done?'達成ずみ':(x.age!=null?Math.floor(x.age)+'歳（あと約'+Math.max(1,Math.round(x.age-s.age))+'年）':'今の計画では未達')}</td></tr>`;}).join('')}
+      return `<tr><td>${x.name}</td><td class="num">${M(x.req)}</td><td class="num ${done?'ok':''}">${done?'達成':pc(p)}</td><td class="${x.age==null?'ng':''}">${done?'達成ずみ':(x.age!=null?ageY(x.age)+'歳（あと約'+Math.max(1,yearsTo(x.age))+'年）':'今の計画では未達')}</td></tr>`;}).join('')}
     <tr><td>④老後資金に不安なし</td><td class="num">${M(sim.R65)}</td><td class="num ${sim.at65>=sim.R65?'ok':''}">${sim.at65>=sim.R65?'安心':pc(sim.R65>0?sim.at65/sim.R65*100:100)}</td><td>65歳の見込み ${M(sim.at65)}</td></tr>
     </tbody></table>
   </section>
