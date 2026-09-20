@@ -117,6 +117,31 @@ header.top h1 small{display:block;font-weight:400;color:var(--ink-2);font-size:1
 .stagekey{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:11.5px;color:var(--ink-2);margin-top:10px}
 .stagekey span i{display:inline-block;width:11px;height:11px;border-radius:3px;background:var(--c);margin-right:6px;vertical-align:-1px}
 
+/* ---- FIREの段階（ヒーロー下） ---- */
+.stages{padding:22px 24px;margin-bottom:18px}
+.stages h2{font-size:17px;margin:0 0 4px;font-weight:700}
+.stages .lead{font-size:12.5px;color:var(--ink-2);margin:0 0 16px;line-height:1.85;max-width:64em}
+.stages .lead b{color:var(--ink);font-weight:700}
+.stagegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.stg{background:var(--surface-2);border-radius:var(--radius-s);padding:13px 15px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.stg.done{background:var(--accent-soft)}
+.stg-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.stg-n{flex:none;width:22px;height:22px;border-radius:50%;background:var(--surface);color:var(--ink-3);
+  font-family:var(--num);font-size:11.5px;font-weight:700;display:grid;place-items:center}
+.stg.done .stg-n{background:var(--accent);color:var(--accent-ink)}
+.stg-name{font-size:13.5px;font-weight:700;min-width:0}
+.stg-when{margin-left:auto;font-size:11px;color:var(--ink-3);white-space:nowrap}
+.stg.done .stg-when{color:var(--accent);font-weight:700}
+.stg-desc{margin:0;font-size:11.5px;color:var(--ink-2);line-height:1.75}
+.stg-foot{margin-top:auto;padding-top:3px;display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;margin-top:2px}
+.stg-amt{font-family:var(--num);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stg-amt small{font-size:10px;font-weight:600;color:var(--ink-3);margin-left:4px;font-family:var(--ui)}
+.stg-bar{height:7px;background:var(--surface);border-radius:99px;position:relative;overflow:hidden}
+.stg-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--asset);border-radius:99px}
+.stg.done .stg-bar i{background:var(--accent)}
+.stg-pct{font-family:var(--num);font-size:11.5px;font-weight:700;color:var(--ink-3);white-space:nowrap}
+.stg.done .stg-pct{color:var(--accent)}
+
 /* ---- レイアウト ---- */
 .layout{display:grid;grid-template-columns:376px minmax(0,1fr);gap:22px;align-items:start}
 @media (max-width:920px){.layout{grid-template-columns:1fr}}
@@ -474,6 +499,12 @@ button.del:hover{color:var(--warn);background:none}
   </div>
   <div class="hero-cards" id="heroCards"></div>
 </header>
+
+<section class="panel sec stages">
+  <h2>FIREの段階と、その目安</h2>
+  <p class="lead" id="stageLead"></p>
+  <div class="stagegrid" id="stageGrid"></div>
+</section>
 
 <div class="layout">
 <aside class="panel inputs" id="inputs">
@@ -1340,6 +1371,48 @@ function niceStep(v){ const p=Math.pow(10,Math.floor(Math.log10(v))); const m=v/
 
 
 
+
+// ---------- FIREの段階（ヒーロー下の説明ボックス） ----------
+const STAGE_ORDER=['g3','flamingo','lean','zero','barista','g2','g1','free','fat'];
+function stageRule(k,s){
+  const m=v=>`月${v}万円`;
+  return ({
+    g3:'老後に足りない分を、いまある資産の運用だけでまかなえる額。ここから先の積立は「早く自由になるため」に使えます',
+    flamingo:'完璧なFIREの半分。ここまで来たら働き方を緩め、残りは運用に任せるという考え方',
+    lean:`切り詰めた暮らし（${m(s.leanLiving+s.housing)}）の25年分。支出を絞るほど、必要な資産は小さくなります`,
+    zero:'資産を残さず、寿命でちょうど使い切る前提。ずっと取り崩し続ける必要がないぶん、必要額は下がります',
+    barista:`パート等で${m(s.baristaInc)}だけ働き、足りない分を資産でまかなう。雇われるので社会保険にも入れます`,
+    g2:'退職後も続く副収入と資産の組み合わせ。自分の事業や副業を残す形',
+    g1:`働かず、退職後の生活費（${m(s.livingRet+s.housing)}）を資産の取り崩しだけでまかなう。いわゆる4%ルール`,
+    free:'取り崩し・配当・家賃・公的給付の合計が、いまの生活費（教育費やローン込み）を上回る状態',
+    fat:`ゆとりある暮らし（${m(s.fatLiving+s.housing)}）の25年分。旅行や教育にも十分使える水準`,
+  })[k]||'';
+}
+function renderStages(sim){
+  const s=state, now=sim.now;
+  const byK={}; FIRE_TYPES.forEach(t=>byK[t.k]=t);
+  const rows=STAGE_ORDER.map(k=>{
+    const t=byK[k]; if(!t) return '';
+    const req=now[t.key], age=sim.cross[k];
+    const done=age!=null&&age<=s.age;
+    const pct=req>0?Math.min(100,now.J/req*100):100;
+    const when=done?'達成ずみ':(age!=null?`${Math.floor(age)}歳ごろ`:'今の計画では未達');
+    return `<div class="stg${done?' done':''}">
+      <div class="stg-h"><span class="stg-n">${STAGE_ORDER.indexOf(k)+1}</span>
+        <span class="stg-name">${t.name}</span>
+        <span class="stg-when">${when}</span></div>
+      <p class="stg-desc">${stageRule(k,s)}</p>
+      <div class="stg-foot">
+        <span class="stg-amt">${fmt(req)}<small>目安</small></span>
+        <span class="stg-bar"><i style="width:${pct}%"></i></span>
+        <span class="stg-pct">${done?'達成':Math.round(pct)+'%'}</span>
+      </div>
+    </div>`;
+  }).join('');
+  $('stageGrid').innerHTML=rows;
+  $('stageLead').innerHTML=`金額は<b>あなたの入力にもとづく目安</b>です。年間の生活費を取崩率${s.wr}%で割った額――つまり<b>年間生活費の${Math.round(100/s.wr)}年分</b>――が基本の考え方で、そこから残りの教育費とローンを足し、これから受け取る年金と児童手当の価値を引いています。`;
+}
+
 // ---------- トップの提案カード ----------
 function renderHero(sim){
   const s=state, r=sim.now;
@@ -2148,7 +2221,7 @@ function update(){
 function recalc(){
   save(); renderEst(); renderExp(); renderHsum();
   const sim=simulate(state); lastSim=sim;
-  renderDiag(sim); renderStage(sim); renderHero(sim); renderAdvice(sim); renderCards(sim); renderRoad(sim); renderTarget(sim); renderChart(sim); renderIncome(sim); renderSens(sim); renderTable(sim); renderStock(); renderRev(); decorate(); renderLog();
+  renderDiag(sim); renderStage(sim); renderHero(sim); renderStages(sim); renderAdvice(sim); renderCards(sim); renderRoad(sim); renderTarget(sim); renderChart(sim); renderIncome(sim); renderSens(sim); renderTable(sim); renderStock(); renderRev(); decorate(); renderLog();
   $('sampleTag').hidden=!isSample();
   try{ const h=btoa(unescape(encodeURIComponent(JSON.stringify(state)))); $('shareUrl').value=location.origin+location.pathname+'#'+h; }catch(e){}
   setDirty(false);
