@@ -1,0 +1,14 @@
+{
+  "name": "FIREへの道",
+  "short_name": "FIREへの道",
+  "description": "お金の不安をなくす家計シミュレーター",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef1ea",
+  "theme_color": "#3d8b5c",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "type": "image/png", "sizes": "180x180" }
+  ]
+}
